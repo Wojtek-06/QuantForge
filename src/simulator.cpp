@@ -1,6 +1,7 @@
 #include "quantforge/sim/simulator.hpp"
 
 #include <cmath>
+#include <stdexcept>
 
 namespace quantforge::sim {
 
@@ -12,6 +13,9 @@ Simulator::Simulator(SimulatorConfig config)
       fair_price_(config_.initial_mid),
       rng_(config_.seed)
 {
+    if (config_.enable_risk_gate) {
+        risk_gate_ = std::make_unique<risk::KillSwitchGate>(config_.risk_limits);
+    }
 }
 
 void Simulator::setStrategy(std::unique_ptr<strategy::IStrategy> strategy)
@@ -79,8 +83,6 @@ void Simulator::scheduleExogenousFlow()
     std::bernoulli_distribution buy_side(0.5);
     std::bernoulli_distribution jump(config_.jump_prob);
     std::uniform_int_distribution<int> jump_size(-20, 20);
-    // Aggressive flow: market orders take resting MM quotes;
-    // occasional passive IOC provides two-sided pressure near fair.
     std::bernoulli_distribution aggressive(0.65);
 
     engine::Price local_fair = config_.initial_mid;
@@ -94,7 +96,6 @@ void Simulator::scheduleExogenousFlow()
             }
         }
 
-        // Publish fair-price update for strategy marking (deterministic).
         Event mtm;
         mtm.time = t;
         mtm.type = EventType::MarkToMarket;
@@ -146,6 +147,55 @@ void Simulator::scheduleExogenousFlow()
     }
 }
 
+void Simulator::scheduleMarketDataFlow()
+{
+    if (!config_.market_data.has_value()) {
+        throw std::invalid_argument(
+            "SimulatorConfig.market_data required for FlowMode::MarketData"
+        );
+    }
+
+    as_of_series_ = marketdata::AsOfSeries(*config_.market_data);
+
+    for (const auto& e : *config_.market_data) {
+        if (e.timestamp > config_.horizon) {
+            break;
+        }
+
+        if (e.kind == marketdata::EventKind::Mid) {
+            Event mtm;
+            mtm.time = e.timestamp + latency_.market_data_latency;
+            mtm.type = EventType::MarkToMarket;
+            mtm.payload = MarkToMarket{e.price};
+            enqueue(mtm);
+            continue;
+        }
+
+        if (!e.side.has_value()) {
+            throw std::invalid_argument("market-data order missing side");
+        }
+
+        engine::Order order{
+            allocateOrderId(),
+            *e.side,
+            e.kind == marketdata::EventKind::Market
+                ? engine::OrderType::Market
+                : engine::OrderType::Limit,
+            e.price,
+            e.quantity,
+            e.timestamp,
+            engine::TimeInForce::IOC,
+            config_.noise_participant
+        };
+
+        Event event;
+        event.time = e.timestamp + latency_.market_data_latency;
+        event.type = EventType::MarketOrderSubmit;
+        event.payload = MarketOrderSubmit{order};
+        enqueue(event);
+    }
+}
+
 void Simulator::scheduleStrategyTicks()
 {
     for (engine::Timestamp t = 0; t < config_.horizon; t += config_.tick_interval) {
@@ -169,7 +219,6 @@ void Simulator::handleMarketOrder(const engine::Order& order)
     if (mutable_order.id == 0) {
         mutable_order.id = allocateOrderId();
     }
-    // Ensure remaining qty is consistent if callers only set quantity.
     if (mutable_order.remaining_quantity == 0 && mutable_order.quantity > 0) {
         mutable_order.remaining_quantity = mutable_order.quantity;
     }
@@ -234,7 +283,6 @@ void Simulator::submitStrategyQuotes(const strategy::QuoteIntent& intent)
     const auto ask_trades = book_.addOrder(ask);
     onTrades(ask_trades, config_.strategy_participant);
 
-    // Resting ids only if still in book.
     if (book_.queuePosition(bid.id)) {
         strategy_resting_bids_.push_back(bid.id);
     }
@@ -245,11 +293,19 @@ void Simulator::submitStrategyQuotes(const strategy::QuoteIntent& intent)
 
 void Simulator::handleStrategyTick()
 {
-    if (!strategy_) {
+    if (!strategy_ || risk_killed_) {
         return;
     }
 
     cancelStrategyQuotes();
+
+    // Advance as-of clock before strategy sees mid / book (blocks look-ahead).
+    if (config_.flow_mode == FlowMode::MarketData) {
+        as_of_series_.advanceTo(now_);
+        if (const auto mid = as_of_series_.midAsOf(now_)) {
+            fair_price_ = *mid;
+        }
+    }
 
     const auto book_view = makeBookView();
     const auto& snap = accounting_.snapshot();
@@ -260,7 +316,19 @@ void Simulator::handleStrategyTick()
         snap.mtm_pnl
     };
 
-    const auto intent = strategy_->onTick(book_view, portfolio);
+    auto intent = strategy_->onTick(book_view, portfolio);
+
+    if (risk_gate_) {
+        const auto decision =
+            risk_gate_->evaluate(portfolio, fair_price_, intent);
+        if (decision.action == risk::RiskAction::Kill ||
+            decision.action == risk::RiskAction::BlockQuotes) {
+            risk_killed_ = true;
+            risk_reason_ = decision.reason;
+            intent = strategy::QuoteIntent{};
+        }
+    }
+
     submitStrategyQuotes(intent);
     accounting_.markToMarket(fair_price_);
 }
@@ -268,6 +336,10 @@ void Simulator::handleStrategyTick()
 void Simulator::processEvent(const Event& event)
 {
     now_ = event.time;
+
+    if (config_.flow_mode == FlowMode::MarketData) {
+        as_of_series_.advanceTo(now_);
+    }
 
     switch (event.type) {
     case EventType::MarketOrderSubmit:
@@ -282,6 +354,10 @@ void Simulator::processEvent(const Event& event)
     case EventType::MarkToMarket: {
         const auto mid_hint = std::get<MarkToMarket>(event.payload).mid_hint;
         if (mid_hint > 0) {
+            // Guard: refuse applying a mid stamped in the future.
+            if (config_.flow_mode == FlowMode::MarketData) {
+                as_of_series_.clock().guard(event.time, "MarkToMarket");
+            }
             fair_price_ = mid_hint;
         }
         accounting_.markToMarket(fair_price_);
@@ -295,19 +371,24 @@ SimulationResult Simulator::run()
     if (strategy_) {
         strategy_->reset();
     }
+    if (risk_gate_) {
+        risk_gate_->reset();
+    }
 
     next_sequence_ = 0;
     next_order_id_ = 1;
     now_ = 0;
     fair_price_ = config_.initial_mid;
+    risk_killed_ = false;
+    risk_reason_.clear();
     accounting_ = metrics::Accounting(config_.strategy_participant);
     book_ = engine::OrderBook(config_.fees);
     strategy_resting_bids_.clear();
     strategy_resting_asks_.clear();
     queue_ = {};
     rng_.seed(config_.seed);
+    as_of_series_.reset();
 
-    // Seed a thin book so early quotes have a mid reference.
     book_.addOrder(engine::Order{
         allocateOrderId(),
         engine::Side::Buy,
@@ -329,7 +410,11 @@ SimulationResult Simulator::run()
         config_.noise_participant
     });
 
-    scheduleExogenousFlow();
+    if (config_.flow_mode == FlowMode::MarketData) {
+        scheduleMarketDataFlow();
+    } else {
+        scheduleExogenousFlow();
+    }
     scheduleStrategyTicks();
 
     SimulationResult result;
@@ -351,6 +436,8 @@ SimulationResult Simulator::run()
     result.final_snapshot = accounting_.snapshot();
     result.metrics = accounting_.metrics();
     result.trades = result.metrics.fills;
+    result.risk_killed = risk_killed_;
+    result.risk_reason = risk_reason_;
 
     return result;
 }

@@ -17,6 +17,8 @@ struct ExperimentConfig {
         "symmetric_mm",
         "avellaneda_stoikov"
     };
+    /// Optional path recorded when loaded from JSON (for reports).
+    std::string market_data_csv;
 };
 
 struct StrategyResult {

@@ -1,0 +1,19 @@
+{
+  "name": "stress_mm_comparison",
+  "seed": 7,
+  "horizon": 8000,
+  "tick_interval": 8,
+  "exogenous_qty": 8,
+  "initial_mid": 10000,
+  "maker_fee_bps": -0.2,
+  "taker_fee_bps": 1.5,
+  "strategy_latency": 2,
+  "enable_risk_gate": true,
+  "max_abs_inventory": 40,
+  "max_drawdown": 25000,
+  "strategies": [
+    "no_trade",
+    "symmetric_mm",
+    "avellaneda_stoikov"
+  ]
+}

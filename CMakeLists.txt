@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.25)
 
 project(
     QuantForge
-    VERSION 0.1.0
+    VERSION 0.2.0
     DESCRIPTION "Event-driven LOB market-making and backtesting laboratory."
     LANGUAGES CXX
 )
@@ -16,6 +16,10 @@ add_library(quantforge_lib
     src/accounting.cpp
     src/simulator.cpp
     src/experiment.cpp
+    src/csv_loader.cpp
+    src/naive_bar_backtester.cpp
+    src/comparison_report.cpp
+    src/config_loader.cpp
 )
 
 target_include_directories(quantforge_lib

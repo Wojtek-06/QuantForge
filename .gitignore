@@ -12,3 +12,5 @@ cmake-build-*/
 *.user
 .DS_Store
 CMakeUserPresets.json
+reports/
+*.tmp.csv

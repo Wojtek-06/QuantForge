@@ -12,6 +12,8 @@ FetchContent_MakeAvailable(googletest)
 add_executable(quantforge_tests
     test_order_book.cpp
     test_simulator.cpp
+    test_marketdata.cpp
+    test_leakage.cpp
 )
 
 target_link_libraries(quantforge_tests
