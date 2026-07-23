@@ -14,3 +14,6 @@ cmake-build-*/
 CMakeUserPresets.json
 reports/
 *.tmp.csv
+_*.log
+_diag_out.txt
+_shell_ping.txt
