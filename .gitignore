@@ -1,0 +1,14 @@
+build/
+.vscode/
+.idea/
+cmake-build-*/
+*.exe
+*.obj
+*.o
+*.pdb
+*.ilk
+*.vcxproj*
+*.sln
+*.user
+.DS_Store
+CMakeUserPresets.json

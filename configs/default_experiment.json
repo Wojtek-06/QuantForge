@@ -1,0 +1,16 @@
+{
+  "name": "mm_strategy_comparison",
+  "seed": 42,
+  "horizon": 5000,
+  "tick_interval": 10,
+  "exogenous_qty": 5,
+  "initial_mid": 10000,
+  "maker_fee_bps": -0.2,
+  "taker_fee_bps": 1.0,
+  "strategy_latency": 1,
+  "strategies": [
+    "no_trade",
+    "symmetric_mm",
+    "avellaneda_stoikov"
+  ]
+}
