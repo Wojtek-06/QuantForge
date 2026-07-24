@@ -235,11 +235,25 @@ void Simulator::handleCancel(engine::OrderId order_id)
 
 void Simulator::cancelStrategyQuotes()
 {
+    const auto delay = latency_.cancelDelay(config_.strategy_participant);
+    auto schedule_or_cancel = [&](engine::OrderId id) {
+        if (delay == 0) {
+            book_.cancelOrder(id);
+            return;
+        }
+        Event event;
+        event.time = now_ + delay;
+        event.sequence = next_sequence_++;
+        event.type = EventType::CancelOrder;
+        event.payload = CancelOrder{id};
+        enqueue(event);
+    };
+
     for (const auto id : strategy_resting_bids_) {
-        book_.cancelOrder(id);
+        schedule_or_cancel(id);
     }
     for (const auto id : strategy_resting_asks_) {
-        book_.cancelOrder(id);
+        schedule_or_cancel(id);
     }
     strategy_resting_bids_.clear();
     strategy_resting_asks_.clear();

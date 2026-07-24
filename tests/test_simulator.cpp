@@ -92,3 +92,31 @@ TEST(ExperimentTest, ComparisonRunsAllStrategies)
     const auto text = quantforge::experiment::formatReport(report);
     EXPECT_NE(text.find("avellaneda_stoikov"), std::string::npos);
 }
+
+TEST(SimulatorTest, CancelLatencyCanChangeFillOutcome)
+{
+    // Same seed/horizon: delayed cancels leave stale quotes exposed to flow.
+    quantforge::sim::SimulatorConfig immediate;
+    immediate.seed = 99;
+    immediate.horizon = 3'000;
+    immediate.latency.strategy_latency = 1;
+    immediate.latency.cancel_latency = 0;
+
+    quantforge::sim::SimulatorConfig delayed = immediate;
+    delayed.latency.cancel_latency = 4;
+
+    quantforge::sim::Simulator a(immediate);
+    a.setStrategy(std::make_unique<quantforge::strategy::SymmetricMarketMaker>());
+    const auto ra = a.run();
+
+    quantforge::sim::Simulator b(delayed);
+    b.setStrategy(std::make_unique<quantforge::strategy::SymmetricMarketMaker>());
+    const auto rb = b.run();
+
+    // Deterministic but distinct regimes — delayed cancel must not be a no-op.
+    EXPECT_TRUE(
+        ra.metrics.fills != rb.metrics.fills ||
+        ra.final_snapshot.inventory != rb.final_snapshot.inventory ||
+        std::abs(ra.metrics.mtm_pnl - rb.metrics.mtm_pnl) > 1e-9
+    );
+}

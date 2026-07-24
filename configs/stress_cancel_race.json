@@ -1,0 +1,21 @@
+{
+  "name": "stress_cancel_race",
+  "seed": 19,
+  "horizon": 6000,
+  "tick_interval": 8,
+  "exogenous_qty": 10,
+  "initial_mid": 10000,
+  "maker_fee_bps": -0.2,
+  "taker_fee_bps": 1.5,
+  "strategy_latency": 2,
+  "cancel_latency": 3,
+  "jump_prob": 0.04,
+  "enable_risk_gate": true,
+  "max_abs_inventory": 60,
+  "max_drawdown": 40000,
+  "strategies": [
+    "no_trade",
+    "symmetric_mm",
+    "avellaneda_stoikov"
+  ]
+}

@@ -224,6 +224,13 @@ ExperimentConfig loadConfigString(const std::string& json_text)
         config.sim.latency.strategy_latency =
             static_cast<engine::Timestamp>(number);
     }
+    if (extractNumber(json_text, "cancel_latency", number)) {
+        config.sim.latency.cancel_latency =
+            static_cast<engine::Timestamp>(number);
+    }
+    if (extractNumber(json_text, "jump_prob", number)) {
+        config.sim.jump_prob = number;
+    }
     if (extractBool(json_text, "enable_risk_gate", flag)) {
         config.sim.enable_risk_gate = flag;
     }

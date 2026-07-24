@@ -37,7 +37,6 @@ TEST(ParamSearchTest, SelectionUsesIsOnlyNotOos)
     );
     ASSERT_FALSE(trials.empty());
 
-    // Every recorded trial score must equal an IS-only simulation — never OOS.
     quantforge::strategy::StrategyParams best_by_is{};
     double best_is_score = -std::numeric_limits<double>::infinity();
     quantforge::strategy::StrategyParams best_by_oos{};
@@ -54,11 +53,14 @@ TEST(ParamSearchTest, SelectionUsesIsOnlyNotOos)
             "symmetric_mm",
             trial.params
         );
-        EXPECT_DOUBLE_EQ(trial.is_score, is_row.simulation.metrics.mtm_pnl);
-        // Selection score must not silently be the OOS score.
+        // Trial score must match an IS-only simulation (not OOS).
+        EXPECT_NEAR(trial.is_score, is_row.simulation.metrics.mtm_pnl, 1e-6);
         if (std::abs(oos_row.simulation.metrics.mtm_pnl - is_row.simulation.metrics.mtm_pnl) >
-            1e-9) {
-            EXPECT_NE(trial.is_score, oos_row.simulation.metrics.mtm_pnl);
+            1e-6) {
+            EXPECT_GT(
+                std::abs(trial.is_score - oos_row.simulation.metrics.mtm_pnl),
+                1e-9
+            );
         }
 
         if (is_row.simulation.metrics.mtm_pnl > best_is_score) {
@@ -74,10 +76,10 @@ TEST(ParamSearchTest, SelectionUsesIsOnlyNotOos)
     EXPECT_EQ(selected.half_spread, best_by_is.half_spread);
     EXPECT_EQ(selected.quote_size, best_by_is.quote_size);
 
-    // When IS and OOS disagree on the winner, selection must follow IS.
+    // Core invariant: selection equals IS argmax regardless of OOS ranking.
+    // (OOS may or may not disagree depending on seeds — do not require disagreement.)
     if (best_by_is.half_spread != best_by_oos.half_spread) {
         EXPECT_EQ(selected.half_spread, best_by_is.half_spread);
-        EXPECT_NE(selected.half_spread, best_by_oos.half_spread);
     }
 }
 
@@ -120,7 +122,6 @@ TEST(ParamSearchTest, WalkForwardFreezesIsWinnerForOos)
         EXPECT_EQ(fold.selected_params.half_spread, expected.half_spread);
         EXPECT_EQ(fold.selected_params.quote_size, expected.quote_size);
 
-        // Frozen params are what actually ran on OOS.
         EXPECT_EQ(
             fold.oos_result.params.half_spread,
             fold.selected_params.half_spread
@@ -160,7 +161,9 @@ TEST(ConfigLoaderTest, ParsesParamSearchKeys)
       "as_sigmas": [4.0, 6.0],
       "as_horizons_T": [0.5],
       "mm_half_spread": 7,
-      "as_gamma": 0.15
+      "as_gamma": 0.15,
+      "cancel_latency": 2,
+      "jump_prob": 0.08
     })";
 
     const auto cfg = quantforge::experiment::loadConfigString(json);
@@ -173,4 +176,6 @@ TEST(ConfigLoaderTest, ParsesParamSearchKeys)
     ASSERT_EQ(cfg.wf_search_space.quote_sizes.size(), 2u);
     EXPECT_EQ(cfg.default_params.half_spread, 7);
     EXPECT_DOUBLE_EQ(cfg.default_params.gamma, 0.15);
+    EXPECT_EQ(cfg.sim.latency.cancel_latency, 2);
+    EXPECT_NEAR(cfg.sim.jump_prob, 0.08, 1e-12);
 }

@@ -1,0 +1,21 @@
+{
+  "name": "stress_vol_spike",
+  "seed": 23,
+  "horizon": 6000,
+  "tick_interval": 6,
+  "exogenous_qty": 12,
+  "initial_mid": 10000,
+  "maker_fee_bps": -0.2,
+  "taker_fee_bps": 2.0,
+  "strategy_latency": 2,
+  "cancel_latency": 2,
+  "jump_prob": 0.12,
+  "enable_risk_gate": true,
+  "max_abs_inventory": 35,
+  "max_drawdown": 20000,
+  "strategies": [
+    "no_trade",
+    "symmetric_mm",
+    "avellaneda_stoikov"
+  ]
+}

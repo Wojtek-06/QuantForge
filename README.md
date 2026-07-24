@@ -1,10 +1,14 @@
 # QuantForge
 
+[![CI](https://github.com/Wojtek-06/QuantForge/actions/workflows/ci.yml/badge.svg)](https://github.com/Wojtek-06/QuantForge/actions/workflows/ci.yml)
+
 Event-driven **limit-order-book market-making & backtesting lab** in C++20, with a pybind11 research module and FastAPI dashboard.
 
-QuantForge absorbs and extends [cpp-exchange-engine](https://github.com/Wojtek-06/cpp-exchange-engine): a price-time matching venue becomes the core of a reproducible microstructure simulator with inventory-aware quoting, fees, latency, CSV replay, walk-forward OOS, **IS-only parameter search**, risk kill-switches, and MM metrics.
+QuantForge absorbs and extends [cpp-exchange-engine](https://github.com/Wojtek-06/cpp-exchange-engine): a price-time matching venue becomes the core of a reproducible microstructure simulator with inventory-aware quoting, fees, latency, **cancel/fill races**, CSV replay, walk-forward OOS, **IS-only parameter search**, risk kill-switches, and MM metrics.
 
 > Placement pitch: *I can build and stress-test HF-style MM ideas with a realistic sim—not bar-close fantasy fills—and measure spread capture, inventory risk, and adverse selection.*
+
+**Leakage catch (CI):** `tests/test_leakage.cpp` fails a naïve bar-close backtest that invents fills against the same strategy on the LOB—CI keeps that regression red-flagged so “gross spread ≠ profit” stays honest.
 
 ---
 
