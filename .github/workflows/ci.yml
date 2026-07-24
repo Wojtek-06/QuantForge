@@ -25,8 +25,17 @@ jobs:
 
       - name: Demo smoke
         run: |
-          ./build/quantforge --config configs/default_experiment.json --out-dir build/reports
+          ./build/quantforge --config configs/default_experiment.json --out-dir build/reports --json-out build/reports/out.json
           ./build/quantforge --config configs/stress_mm.json --out-dir build/reports
           ./build/quantforge --config configs/csv_replay.json --out-dir build/reports
+          ./build/quantforge --config configs/walk_forward.json --out-dir build/reports
+          ./build/lob_replay_export --strategy avellaneda_stoikov --horizon 800 --out web/replay/sample_replay.json
           test -f build/reports/mm_strategy_comparison_report.md
           test -f build/reports/csv_replay_mm_results.csv
+          test -f build/reports/walk_forward_mm_walk_forward.json
+          test -f web/replay/sample_replay.json
+
+      - name: Python risk bridge tests
+        run: |
+          python -m pip install -r python/requirements.txt
+          PYTHONPATH=python python -m pytest python/tests -q

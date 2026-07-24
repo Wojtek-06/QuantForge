@@ -45,11 +45,13 @@ public:
 
     const PortfolioSnapshot& snapshot() const;
     MmMetrics metrics() const;
+    const std::vector<double>& equityPath() const;
 
 private:
     engine::ParticipantId participant_;
     PortfolioSnapshot state_{};
     MmMetrics mm_{};
+    std::vector<double> equity_path_{};
 
     double volume_weighted_entry_{0.0};
     std::int64_t abs_filled_qty_{0};

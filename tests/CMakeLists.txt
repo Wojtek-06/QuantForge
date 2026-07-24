@@ -14,6 +14,7 @@ add_executable(quantforge_tests
     test_simulator.cpp
     test_marketdata.cpp
     test_leakage.cpp
+    test_risk_walkforward.cpp
 )
 
 target_link_libraries(quantforge_tests

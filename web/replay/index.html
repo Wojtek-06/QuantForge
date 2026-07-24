@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>QuantForge LOB Replay</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0e1318;
+      --panel: #182029;
+      --ink: #e7eef7;
+      --muted: #8fa0b3;
+      --bid: #3ecf8e;
+      --ask: #f07178;
+      --mid: #3d9cf0;
+      --quote: #f0c14a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(900px 420px at 0% 0%, #1b334d, transparent 60%),
+        var(--bg);
+      min-height: 100vh;
+    }
+    header, main { padding: 1.25rem 1.5rem; }
+    h1 { margin: 0; font-size: 1.5rem; }
+    p { color: var(--muted); }
+    .controls {
+      display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center;
+      margin: 1rem 0;
+    }
+    button, input[type="range"] {
+      font: inherit; border-radius: 8px; border: 1px solid #2b3848;
+      background: var(--panel); color: var(--ink); padding: 0.45rem 0.8rem;
+    }
+    button { cursor: pointer; background: #2f6fad; border: none; font-weight: 600; }
+    .stage {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 1rem;
+    }
+    @media (max-width: 900px) { .stage { grid-template-columns: 1fr; } }
+    .panel {
+      background: color-mix(in srgb, var(--panel) 95%, black);
+      border: 1px solid #2b3848;
+      border-radius: 12px;
+      padding: 1rem;
+    }
+    canvas { width: 100%; height: 360px; display: block; background: #10161d; border-radius: 8px; }
+    .stat { font-family: "IBM Plex Mono", monospace; font-size: 0.9rem; margin: 0.35rem 0; }
+    .bid { color: var(--bid); } .ask { color: var(--ask); } .mid { color: var(--mid); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>QuantForge LOB replay</h1>
+    <p>Animated evidence: inventory-aware quotes reacting to flow on the matching engine. Load <code>sample_replay.json</code> (from <code>lob_replay_export</code>).</p>
+    <div class="controls">
+      <button id="play">Play</button>
+      <button id="pause">Pause</button>
+      <label>Speed <input id="speed" type="range" min="1" max="30" value="8" /></label>
+      <span id="meta" class="stat"></span>
+    </div>
+  </header>
+  <main class="stage">
+    <section class="panel">
+      <canvas id="book"></canvas>
+    </section>
+    <section class="panel">
+      <div id="stats"></div>
+      <canvas id="equity" style="height:180px;margin-top:1rem;"></canvas>
+    </section>
+  </main>
+  <script>
+    let frames = [];
+    let idx = 0;
+    let playing = false;
+    let timer = null;
+
+    const canvas = document.getElementById("book");
+    const equityCanvas = document.getElementById("equity");
+    const stats = document.getElementById("stats");
+    const meta = document.getElementById("meta");
+
+    function drawFrame(f) {
+      const ctx = canvas.getContext("2d");
+      const w = canvas.width = canvas.clientWidth * devicePixelRatio;
+      const h = canvas.height = canvas.clientHeight * devicePixelRatio;
+      ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+      const width = canvas.clientWidth, height = canvas.clientHeight;
+      ctx.clearRect(0, 0, width, height);
+      ctx.fillStyle = "#10161d";
+      ctx.fillRect(0, 0, width, height);
+
+      const midY = height / 2;
+      ctx.strokeStyle = "#2b3848";
+      ctx.beginPath(); ctx.moveTo(40, midY); ctx.lineTo(width - 20, midY); ctx.stroke();
+
+      const scaleX = (width - 80) / 40;
+      const mid = f.mid || 10000;
+      const px = (price) => 40 + (price - (mid - 20)) * scaleX;
+
+      function bar(price, qty, color, up) {
+        if (price == null) return;
+        const x = px(price);
+        const bh = Math.min(120, 8 + qty * 2);
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 0.85;
+        if (up) ctx.fillRect(x - 6, midY - bh, 12, bh);
+        else ctx.fillRect(x - 6, midY, 12, bh);
+        ctx.globalAlpha = 1;
+      }
+
+      bar(f.best_bid, f.bid_qty, "#3ecf8e", true);
+      bar(f.best_ask, f.ask_qty, "#f07178", false);
+
+      if (f.quoting) {
+        ctx.strokeStyle = "#f0c14a";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(px(f.quote_bid) - 8, midY - 40, 16, 40);
+        ctx.strokeRect(px(f.quote_ask) - 8, midY, 16, 40);
+      }
+
+      ctx.fillStyle = "#3d9cf0";
+      ctx.beginPath();
+      ctx.arc(px(mid), midY, 4, 0, Math.PI * 2);
+      ctx.fill();
+
+      stats.innerHTML = `
+        <div class="stat mid">t=${f.t} mid=${f.mid}</div>
+        <div class="stat bid">best bid=${f.best_bid ?? "—"} x ${f.bid_qty}</div>
+        <div class="stat ask">best ask=${f.best_ask ?? "—"} x ${f.ask_qty}</div>
+        <div class="stat">inventory=${f.inventory} mtm=${Number(f.mtm).toFixed(2)}</div>
+        <div class="stat">quotes=${f.quoting ? (f.quote_bid + " / " + f.quote_ask) : "flat"}</div>`;
+
+      // mini equity
+      const ectx = equityCanvas.getContext("2d");
+      const ew = equityCanvas.width = equityCanvas.clientWidth * devicePixelRatio;
+      const eh = equityCanvas.height = equityCanvas.clientHeight * devicePixelRatio;
+      ectx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+      const eW = equityCanvas.clientWidth, eH = equityCanvas.clientHeight;
+      ectx.clearRect(0, 0, eW, eH);
+      ectx.fillStyle = "#10161d"; ectx.fillRect(0, 0, eW, eH);
+      const slice = frames.slice(0, idx + 1).map(x => x.mtm);
+      if (slice.length > 1) {
+        let mn = Math.min(...slice), mx = Math.max(...slice);
+        if (mn === mx) { mn -= 1; mx += 1; }
+        ectx.strokeStyle = "#3d9cf0"; ectx.beginPath();
+        slice.forEach((v, i) => {
+          const x = (i / (slice.length - 1)) * (eW - 10) + 5;
+          const y = eH - 8 - ((v - mn) / (mx - mn)) * (eH - 16);
+          if (i === 0) ectx.moveTo(x, y); else ectx.lineTo(x, y);
+        });
+        ectx.stroke();
+      }
+    }
+
+    function tick() {
+      if (!frames.length) return;
+      drawFrame(frames[idx]);
+      meta.textContent = `${idx + 1} / ${frames.length}`;
+      if (playing) {
+        idx = (idx + 1) % frames.length;
+      }
+    }
+
+    function setTimer() {
+      if (timer) clearInterval(timer);
+      const speed = Number(document.getElementById("speed").value);
+      timer = setInterval(tick, 1000 / speed);
+    }
+
+    document.getElementById("play").onclick = () => { playing = true; };
+    document.getElementById("pause").onclick = () => { playing = false; };
+    document.getElementById("speed").oninput = setTimer;
+
+    fetch("sample_replay.json")
+      .then(r => {
+        if (!r.ok) throw new Error("sample_replay.json missing — run lob_replay_export");
+        return r.json();
+      })
+      .then(data => {
+        frames = data.frames || [];
+        meta.textContent = `${data.strategy || "?"} · ${frames.length} frames`;
+        if (frames.length) drawFrame(frames[0]);
+        setTimer();
+      })
+      .catch(err => { meta.textContent = String(err); });
+  </script>
+</body>
+</html>

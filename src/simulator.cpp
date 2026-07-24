@@ -291,12 +291,69 @@ void Simulator::submitStrategyQuotes(const strategy::QuoteIntent& intent)
     }
 }
 
+void Simulator::maybeRecordReplayFrame()
+{
+    if (!config_.record_replay) {
+        return;
+    }
+    if (config_.replay_stride == 0) {
+        return;
+    }
+    if (strategy_tick_count_ % config_.replay_stride != 0) {
+        return;
+    }
+
+    ReplayFrame frame;
+    frame.time = now_;
+    frame.mid = fair_price_;
+    frame.best_bid = book_.bestBid();
+    frame.best_ask = book_.bestAsk();
+    if (frame.best_bid) {
+        frame.bid_qty = book_.bidQuantityAt(*frame.best_bid);
+    }
+    if (frame.best_ask) {
+        frame.ask_qty = book_.askQuantityAt(*frame.best_ask);
+    }
+    const auto& snap = accounting_.snapshot();
+    frame.inventory = snap.inventory;
+    frame.mtm_pnl = snap.mtm_pnl;
+    frame.quoting = last_intent_.quote;
+    frame.quote_bid = last_intent_.bid_price;
+    frame.quote_ask = last_intent_.ask_price;
+    frame.quote_bid_size = last_intent_.bid_size;
+    frame.quote_ask_size = last_intent_.ask_size;
+    replay_frames_.push_back(frame);
+}
+
+void Simulator::maybeOvernightRiskCheck()
+{
+    if (!risk_gate_ || risk_killed_) {
+        return;
+    }
+    if (config_.overnight_check_every == 0) {
+        return;
+    }
+    if (strategy_tick_count_ % config_.overnight_check_every != 0) {
+        return;
+    }
+
+    const auto decision =
+        risk_gate_->evaluateOvernight(accounting_.equityPath());
+    if (decision.action == risk::RiskAction::Kill) {
+        risk_killed_ = true;
+        risk_reason_ = decision.reason;
+        cancelStrategyQuotes();
+        last_intent_ = {};
+    }
+}
+
 void Simulator::handleStrategyTick()
 {
     if (!strategy_ || risk_killed_) {
         return;
     }
 
+    ++strategy_tick_count_;
     cancelStrategyQuotes();
 
     // Advance as-of clock before strategy sees mid / book (blocks look-ahead).
@@ -329,8 +386,11 @@ void Simulator::handleStrategyTick()
         }
     }
 
+    last_intent_ = intent;
     submitStrategyQuotes(intent);
     accounting_.markToMarket(fair_price_);
+    maybeOvernightRiskCheck();
+    maybeRecordReplayFrame();
 }
 
 void Simulator::processEvent(const Event& event)
@@ -381,6 +441,9 @@ SimulationResult Simulator::run()
     fair_price_ = config_.initial_mid;
     risk_killed_ = false;
     risk_reason_.clear();
+    strategy_tick_count_ = 0;
+    last_intent_ = {};
+    replay_frames_.clear();
     accounting_ = metrics::Accounting(config_.strategy_participant);
     book_ = engine::OrderBook(config_.fees);
     strategy_resting_bids_.clear();
@@ -438,6 +501,12 @@ SimulationResult Simulator::run()
     result.trades = result.metrics.fills;
     result.risk_killed = risk_killed_;
     result.risk_reason = risk_reason_;
+    result.equity_curve = accounting_.equityPath();
+    result.overnight_var_es = risk::historicalVarEs(result.equity_curve, 0.95);
+    if (risk_gate_ && risk_gate_->lastVarEs().valid) {
+        result.overnight_var_es = risk_gate_->lastVarEs();
+    }
+    result.replay = replay_frames_;
 
     return result;
 }

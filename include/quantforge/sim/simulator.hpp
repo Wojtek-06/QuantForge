@@ -5,8 +5,10 @@
 #include "quantforge/marketdata/types.hpp"
 #include "quantforge/metrics/accounting.hpp"
 #include "quantforge/risk/risk_gate.hpp"
+#include "quantforge/risk/var_es.hpp"
 #include "quantforge/sim/event.hpp"
 #include "quantforge/sim/latency_model.hpp"
+#include "quantforge/sim/replay.hpp"
 #include "quantforge/strategy/strategy.hpp"
 
 #include <cstdint>
@@ -42,6 +44,12 @@ struct SimulatorConfig {
     /// Optional Cross-Asset-Risk-Engine-style kill switch.
     risk::RiskLimits risk_limits{};
     bool enable_risk_gate{false};
+    /// How often (in strategy ticks) to evaluate overnight VaR stress.
+    std::uint64_t overnight_check_every{50};
+    /// Capture LOB replay frames for evidence / UI animation.
+    bool record_replay{false};
+    /// Subsample replay frames (1 = every strategy tick).
+    std::uint64_t replay_stride{1};
 };
 
 struct SimulationResult {
@@ -52,6 +60,9 @@ struct SimulationResult {
     std::uint64_t trades{0};
     bool risk_killed{false};
     std::string risk_reason;
+    std::vector<double> equity_curve{};
+    risk::VarEsResult overnight_var_es{};
+    std::vector<ReplayFrame> replay{};
 };
 
 class Simulator {
@@ -78,6 +89,9 @@ private:
     engine::Price fair_price_{10'000};
     bool risk_killed_{false};
     std::string risk_reason_;
+    std::uint64_t strategy_tick_count_{0};
+    strategy::QuoteIntent last_intent_{};
+    std::vector<ReplayFrame> replay_frames_;
 
     std::mt19937_64 rng_;
 
@@ -94,6 +108,8 @@ private:
     void handleStrategyTick();
     void cancelStrategyQuotes();
     void submitStrategyQuotes(const strategy::QuoteIntent& intent);
+    void maybeRecordReplayFrame();
+    void maybeOvernightRiskCheck();
 
     engine::OrderId allocateOrderId();
     strategy::BookView makeBookView() const;

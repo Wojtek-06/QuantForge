@@ -82,6 +82,8 @@ void Accounting::markToMarket(engine::Price mid)
         mm_.adverse_selection = -signed_markout_ /
             static_cast<double>(abs_filled_qty_);
     }
+
+    equity_path_.push_back(state_.mtm_pnl);
 }
 
 void Accounting::recordQuoteAttempt()
@@ -108,6 +110,11 @@ MmMetrics Accounting::metrics() const
             static_cast<double>(mm_.quote_attempts);
     }
     return out;
+}
+
+const std::vector<double>& Accounting::equityPath() const
+{
+    return equity_path_;
 }
 
 } // namespace quantforge::metrics

@@ -17,3 +17,11 @@ reports/
 _*.log
 _diag_out.txt
 _shell_ping.txt
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+python/.venv/
+*.egg-info/
+.mypy_cache/

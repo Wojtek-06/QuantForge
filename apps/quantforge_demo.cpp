@@ -1,11 +1,14 @@
 #include "quantforge/experiment/config_loader.hpp"
 #include "quantforge/experiment/experiment.hpp"
+#include "quantforge/experiment/walk_forward.hpp"
 #include "quantforge/marketdata/csv_loader.hpp"
 #include "quantforge/report/comparison_report.hpp"
+#include "quantforge/report/json_export.hpp"
 #include "quantforge/sim/naive_bar_backtester.hpp"
 #include "quantforge/strategy/symmetric_mm.hpp"
 
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <string>
 
@@ -14,8 +17,11 @@ namespace {
 void printUsage(const char* argv0)
 {
     std::cerr
-        << "Usage: " << argv0 << " [--config path.json] [--out-dir dir]\n"
-        << "  Runs strategy comparison; writes markdown+CSV reports when --out-dir set.\n";
+        << "Usage: " << argv0
+        << " [--config path.json] [--out-dir dir] [--json-out path.json]"
+        << " [--walk-forward]\n"
+        << "  Runs strategy comparison (+ optional walk-forward OOS).\n"
+        << "  Writes markdown/CSV/JSON research artefacts when paths are set.\n";
 }
 
 } // namespace
@@ -26,6 +32,8 @@ int main(int argc, char** argv)
 
     std::filesystem::path config_path;
     std::filesystem::path out_dir;
+    std::filesystem::path json_out;
+    bool force_walk_forward = false;
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -39,6 +47,14 @@ int main(int argc, char** argv)
         }
         if (arg == "--out-dir" && i + 1 < argc) {
             out_dir = argv[++i];
+            continue;
+        }
+        if (arg == "--json-out" && i + 1 < argc) {
+            json_out = argv[++i];
+            continue;
+        }
+        if (arg == "--walk-forward") {
+            force_walk_forward = true;
             continue;
         }
         std::cerr << "Unknown argument: " << arg << '\n';
@@ -65,6 +81,10 @@ int main(int argc, char** argv)
         };
     }
 
+    if (force_walk_forward) {
+        config.run_walk_forward = true;
+    }
+
     const auto report = experiment::runComparison(config);
     std::cout << experiment::formatReport(report);
 
@@ -74,7 +94,6 @@ int main(int argc, char** argv)
         "Gross spread ≠ profit. Compare LOB fills to naive bar fantasy fills "
         "under identical mid paths when market data is available.";
 
-    // Leakage case study when we have (or can synthesize) a mid path.
     marketdata::MarketEventSeries series;
     if (config.sim.market_data.has_value()) {
         series = *config.sim.market_data;
@@ -109,7 +128,29 @@ int main(int argc, char** argv)
     std::cout << "Naive MTM: " << leak.naive.metrics.mtm_pnl
               << " (fantasy fills=" << leak.naive.fantasy_fills << ")\n";
 
+    for (const auto& row : report.results) {
+        if (row.simulation.overnight_var_es.valid) {
+            std::cout << "VaR95[" << row.strategy_name << "]="
+                      << row.simulation.overnight_var_es.var
+                      << " ES95="
+                      << row.simulation.overnight_var_es.expected_shortfall
+                      << '\n';
+        }
+    }
+
     research.leakage_cases.push_back(std::move(leak));
+
+    experiment::WalkForwardReport wf_report;
+    if (config.run_walk_forward) {
+        experiment::WalkForwardConfig wf;
+        wf.is_horizon = config.wf_is_horizon;
+        wf.oos_horizon = config.wf_oos_horizon;
+        wf.step = config.wf_step;
+        wf.max_folds = config.wf_max_folds;
+        wf.strategy = config.wf_strategy;
+        wf_report = experiment::runWalkForward(config, wf);
+        std::cout << '\n' << experiment::formatWalkForwardReport(wf_report);
+    }
 
     if (!out_dir.empty()) {
         std::filesystem::create_directories(out_dir);
@@ -118,6 +159,28 @@ int main(int argc, char** argv)
         report::writeReportFiles(research, md, csv);
         std::cout << "\nWrote " << md.string() << '\n'
                   << "Wrote " << csv.string() << '\n';
+
+        if (config.run_walk_forward) {
+            const auto wf_path = out_dir / (config.name + "_walk_forward.json");
+            std::ofstream wf_out(wf_path);
+            wf_out << report::formatWalkForwardJson(wf_report);
+            std::cout << "Wrote " << wf_path.string() << '\n';
+        }
+    }
+
+    if (!json_out.empty()) {
+        if (json_out.has_parent_path()) {
+            std::filesystem::create_directories(json_out.parent_path());
+        }
+        std::ofstream out(json_out);
+        if (config.run_walk_forward) {
+            out << "{\"comparison\":" << report::formatResearchJson(research)
+                << ",\"walk_forward\":"
+                << report::formatWalkForwardJson(wf_report) << '}';
+        } else {
+            out << report::formatResearchJson(research);
+        }
+        std::cout << "Wrote " << json_out.string() << '\n';
     }
 
     return 0;

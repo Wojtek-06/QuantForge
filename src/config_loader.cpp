@@ -189,6 +189,37 @@ ExperimentConfig loadConfigString(const std::string& json_text)
     if (extractNumber(json_text, "max_drawdown", number)) {
         config.sim.risk_limits.max_drawdown = number;
     }
+    if (extractNumber(json_text, "max_abs_notional", number)) {
+        config.sim.risk_limits.max_abs_notional = number;
+    }
+    if (extractNumber(json_text, "max_var_95", number)) {
+        config.sim.risk_limits.max_var_95 = number;
+    }
+    if (extractBool(json_text, "enable_overnight_var", flag)) {
+        config.sim.risk_limits.enable_overnight_var = flag;
+    }
+    if (extractNumber(json_text, "overnight_check_every", number)) {
+        config.sim.overnight_check_every =
+            static_cast<std::uint64_t>(number);
+    }
+    if (extractBool(json_text, "run_walk_forward", flag)) {
+        config.run_walk_forward = flag;
+    }
+    if (extractNumber(json_text, "wf_is_horizon", number)) {
+        config.wf_is_horizon = static_cast<std::size_t>(number);
+    }
+    if (extractNumber(json_text, "wf_oos_horizon", number)) {
+        config.wf_oos_horizon = static_cast<std::size_t>(number);
+    }
+    if (extractNumber(json_text, "wf_step", number)) {
+        config.wf_step = static_cast<std::size_t>(number);
+    }
+    if (extractNumber(json_text, "wf_max_folds", number)) {
+        config.wf_max_folds = static_cast<std::size_t>(number);
+    }
+    if (extractString(json_text, "wf_strategy", str)) {
+        config.wf_strategy = str;
+    }
 
     auto strategies = extractStringArray(json_text, "strategies");
     if (!strategies.empty()) {

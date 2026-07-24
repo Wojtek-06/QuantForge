@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>QuantForge Research</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header>
+    <h1>QuantForge</h1>
+    <p>Research façade for the event-driven LOB market-making lab — strategy comparison, walk-forward OOS, leakage foil, and Risk Engine stress hooks.</p>
+  </header>
+  <main>
+    <aside class="panel">
+      <label for="config">Experiment config</label>
+      <select id="config"></select>
+      <label class="checks"><input type="checkbox" id="wf" /> Run walk-forward / OOS</label>
+      <button id="runBtn">Run comparison</button>
+      <p id="status" class="status muted"></p>
+
+      <hr style="border-color: var(--line); margin: 1rem 0;" />
+      <h3 style="margin: 0 0 0.6rem; font-size: 1rem;">Overnight option stress</h3>
+      <p class="muted">Uses Cross-Asset-Risk-Engine when installed; otherwise BS fallback.</p>
+      <label for="spot">Spot</label>
+      <input id="spot" type="number" value="100" />
+      <label for="strike">Strike</label>
+      <input id="strike" type="number" value="100" />
+      <label for="vol">Vol</label>
+      <input id="vol" type="number" step="0.01" value="0.25" />
+      <button id="stressBtn" class="secondary">Stress</button>
+      <pre id="stressOut" class="mono muted" style="white-space: pre-wrap; font-size: 0.75rem;"></pre>
+      <p class="muted"><a href="/replay/" style="color: var(--accent);">Open LOB replay viewer</a></p>
+    </aside>
+
+    <section>
+      <div class="panel" style="margin-bottom: 1rem;">
+        <h2 style="margin-top: 0; font-size: 1.1rem;">Strategy comparison</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Strategy</th>
+              <th>MTM</th>
+              <th>Inv</th>
+              <th>MaxDD</th>
+              <th>Fills</th>
+              <th>FillRate</th>
+              <th>VaR95</th>
+              <th>Killed</th>
+            </tr>
+          </thead>
+          <tbody id="resultsBody">
+            <tr><td colspan="8" class="muted">Run an experiment to populate.</td></tr>
+          </tbody>
+        </table>
+        <p id="leakage" class="muted"></p>
+      </div>
+
+      <div class="grid-2">
+        <div class="panel">
+          <h2 style="margin-top: 0; font-size: 1.1rem;">Equity curves</h2>
+          <canvas id="equityChart" class="chart"></canvas>
+        </div>
+        <div class="panel">
+          <h2 style="margin-top: 0; font-size: 1.1rem;">Walk-forward folds</h2>
+          <div id="wfPanel"><p class="muted">Walk-forward not requested.</p></div>
+        </div>
+      </div>
+    </section>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>
