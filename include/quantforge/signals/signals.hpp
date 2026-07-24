@@ -60,15 +60,34 @@ inline std::optional<double> orderFlowImbalance(const BookSnapshot& book)
     return (bs - as) / (bs + as);
 }
 
-/// Toxicity stub: signed pressure proxy in [-1, 1]. Realised later via VPIN/OFI.
+/// Book-pressure toxicity proxy in [-1, 1] from top-of-book OFI.
 inline std::optional<double> toxicityProxy(const BookSnapshot& book)
 {
     const auto ofi = orderFlowImbalance(book);
     if (!ofi) {
         return std::nullopt;
     }
-    // Soft-clip for a bounded "toxicity" score used by strategies.
     return std::tanh(*ofi);
+}
+
+/// Blend top-of-book OFI toxicity with recent aggressor trade-flow toxicity.
+inline double blendedToxicity(const BookSnapshot& book, double trade_toxicity)
+{
+    const auto book_tox = toxicityProxy(book);
+    const double bt = book_tox ? *book_tox : 0.0;
+    const double tt = std::tanh(trade_toxicity);
+    return 0.5 * bt + 0.5 * tt;
+}
+
+/// EWMA realized vol update from a mid return (price units).
+inline double ewmaVolatility(double prev_vol, double mid_return, double alpha = 0.05)
+{
+    const double r2 = mid_return * mid_return;
+    if (prev_vol <= 0.0) {
+        return std::sqrt(std::max(r2, 1e-12));
+    }
+    const double var = (1.0 - alpha) * (prev_vol * prev_vol) + alpha * r2;
+    return std::sqrt(std::max(var, 1e-12));
 }
 
 } // namespace quantforge::signals

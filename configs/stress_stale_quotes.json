@@ -1,0 +1,21 @@
+{
+  "name": "stress_stale_quotes",
+  "seed": 31,
+  "horizon": 6000,
+  "tick_interval": 10,
+  "exogenous_qty": 14,
+  "initial_mid": 10000,
+  "maker_fee_bps": -0.2,
+  "taker_fee_bps": 1.5,
+  "strategy_latency": 3,
+  "cancel_latency": 5,
+  "jump_prob": 0.03,
+  "enable_risk_gate": true,
+  "max_abs_inventory": 50,
+  "max_drawdown": 30000,
+  "strategies": [
+    "no_trade",
+    "symmetric_mm",
+    "avellaneda_stoikov"
+  ]
+}

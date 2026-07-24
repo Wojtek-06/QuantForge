@@ -3,6 +3,8 @@
 #include <cmath>
 #include <stdexcept>
 
+#include "quantforge/signals/signals.hpp"
+
 namespace quantforge::sim {
 
 Simulator::Simulator(SimulatorConfig config)
@@ -39,6 +41,8 @@ strategy::BookView Simulator::makeBookView() const
     strategy::BookView view;
     view.now = now_;
     view.fair_price = fair_price_;
+    view.realized_vol = realized_vol_;
+    view.trade_toxicity = trade_toxicity_;
     view.book.best_bid = book_.bestBid();
     view.book.best_ask = book_.bestAsk();
 
@@ -50,6 +54,31 @@ strategy::BookView Simulator::makeBookView() const
     }
 
     return view;
+}
+
+void Simulator::observeMidForVol(engine::Price mid)
+{
+    if (mid <= 0) {
+        return;
+    }
+    if (last_mid_for_vol_ > 0) {
+        const double ret =
+            static_cast<double>(mid) - static_cast<double>(last_mid_for_vol_);
+        realized_vol_ = signals::ewmaVolatility(realized_vol_, ret);
+    }
+    last_mid_for_vol_ = mid;
+}
+
+void Simulator::observeTradesForSignals(const std::vector<engine::Trade>& trades)
+{
+    constexpr double alpha = 0.08;
+    for (const auto& trade : trades) {
+        const double signed_qty = trade.buyer_is_taker
+            ? static_cast<double>(trade.quantity)
+            : -static_cast<double>(trade.quantity);
+        trade_toxicity_ =
+            (1.0 - alpha) * trade_toxicity_ + alpha * signed_qty;
+    }
 }
 
 void Simulator::onTrades(
@@ -225,6 +254,7 @@ void Simulator::handleMarketOrder(const engine::Order& order)
     mutable_order.timestamp = now_;
 
     const auto trades = book_.addOrder(mutable_order);
+    observeTradesForSignals(trades);
     onTrades(trades, mutable_order.participant_id);
 }
 
@@ -292,9 +322,11 @@ void Simulator::submitStrategyQuotes(const strategy::QuoteIntent& intent)
     };
 
     const auto bid_trades = book_.addOrder(bid);
+    observeTradesForSignals(bid_trades);
     onTrades(bid_trades, config_.strategy_participant);
 
     const auto ask_trades = book_.addOrder(ask);
+    observeTradesForSignals(ask_trades);
     onTrades(ask_trades, config_.strategy_participant);
 
     if (book_.queuePosition(bid.id)) {
@@ -433,6 +465,7 @@ void Simulator::processEvent(const Event& event)
                 as_of_series_.clock().guard(event.time, "MarkToMarket");
             }
             fair_price_ = mid_hint;
+            observeMidForVol(fair_price_);
         }
         accounting_.markToMarket(fair_price_);
         break;
@@ -453,6 +486,9 @@ SimulationResult Simulator::run()
     next_order_id_ = 1;
     now_ = 0;
     fair_price_ = config_.initial_mid;
+    last_mid_for_vol_ = 0;
+    realized_vol_ = 0.0;
+    trade_toxicity_ = 0.0;
     risk_killed_ = false;
     risk_reason_.clear();
     strategy_tick_count_ = 0;

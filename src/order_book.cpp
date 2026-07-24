@@ -39,11 +39,23 @@ std::vector<Trade> OrderBook::addOrder(const Order& order)
 {
     validateOrder(order);
 
-    if (order.side == Side::Buy) {
-        return matchBuyOrder(order);
+    if (order.type == OrderType::Stop) {
+        return restStopOrder(order);
     }
 
-    return matchSellOrder(order);
+    std::vector<Trade> trades;
+    if (order.side == Side::Buy) {
+        trades = matchBuyOrder(order);
+    } else {
+        trades = matchSellOrder(order);
+    }
+
+    if (!trades.empty()) {
+        auto cascaded = triggerStops(trades.back().price);
+        trades.insert(trades.end(), cascaded.begin(), cascaded.end());
+    }
+
+    return trades;
 }
 
 bool OrderBook::cancelOrder(OrderId order_id)
@@ -56,7 +68,25 @@ bool OrderBook::cancelOrder(OrderId order_id)
 
     const auto& location = it->second;
 
-    if (location.side == Side::Buy) {
+    if (location.is_stop) {
+        if (location.side == Side::Buy) {
+            auto book_it = stop_buys_.find(location.price);
+            if (book_it != stop_buys_.end()) {
+                book_it->second.erase(location.iterator);
+                if (book_it->second.empty()) {
+                    stop_buys_.erase(book_it);
+                }
+            }
+        } else {
+            auto book_it = stop_sells_.find(location.price);
+            if (book_it != stop_sells_.end()) {
+                book_it->second.erase(location.iterator);
+                if (book_it->second.empty()) {
+                    stop_sells_.erase(book_it);
+                }
+            }
+        }
+    } else if (location.side == Side::Buy) {
         auto book_it = bids_.find(location.price);
         if (book_it != bids_.end()) {
             book_it->second.erase(location.iterator);
@@ -78,6 +108,11 @@ bool OrderBook::cancelOrder(OrderId order_id)
 
     order_lookup_.erase(it);
     return true;
+}
+
+std::optional<Price> OrderBook::lastTradePrice() const
+{
+    return last_trade_price_;
 }
 
 std::optional<Price> OrderBook::bestBid() const
@@ -115,6 +150,10 @@ void OrderBook::validateOrder(const Order& order) const
 
     if (order.type == OrderType::Limit && order.price <= 0) {
         throw InvalidOrder("Limit order price must be greater than zero.");
+    }
+
+    if (order.type == OrderType::Stop && order.price <= 0) {
+        throw InvalidOrder("Stop trigger price must be greater than zero.");
     }
 
     if (order.type == OrderType::Market && order.tif == TimeInForce::FOK) {
@@ -170,7 +209,21 @@ std::optional<std::size_t> OrderBook::queuePosition(OrderId order_id) const
     const auto& location = it->second;
     const OrderList* level = nullptr;
 
-    if (location.side == Side::Buy) {
+    if (location.is_stop) {
+        if (location.side == Side::Buy) {
+            const auto book_it = stop_buys_.find(location.price);
+            if (book_it == stop_buys_.end()) {
+                return std::nullopt;
+            }
+            level = &book_it->second;
+        } else {
+            const auto book_it = stop_sells_.find(location.price);
+            if (book_it == stop_sells_.end()) {
+                return std::nullopt;
+            }
+            level = &book_it->second;
+        }
+    } else if (location.side == Side::Buy) {
         const auto book_it = bids_.find(location.price);
         if (book_it == bids_.end()) {
             return std::nullopt;
@@ -404,6 +457,121 @@ std::vector<Trade> OrderBook::matchSellOrder(Order incoming)
     return trades;
 }
 
+std::vector<Trade> OrderBook::restStopOrder(Order order)
+{
+    // Immediate arm if last trade already through the trigger.
+    if (last_trade_price_) {
+        const bool armed =
+            (order.side == Side::Buy && *last_trade_price_ >= order.price) ||
+            (order.side == Side::Sell && *last_trade_price_ <= order.price);
+        if (armed) {
+            Order market = order;
+            market.type = OrderType::Market;
+            market.price = 0;
+            market.tif = TimeInForce::IOC;
+            std::vector<Trade> trades;
+            if (market.side == Side::Buy) {
+                trades = matchBuyOrder(market);
+            } else {
+                trades = matchSellOrder(market);
+            }
+            if (!trades.empty()) {
+                auto cascaded = triggerStops(trades.back().price);
+                trades.insert(trades.end(), cascaded.begin(), cascaded.end());
+            }
+            return trades;
+        }
+    }
+
+    if (order.side == Side::Buy) {
+        auto& level = stop_buys_[order.price];
+        level.push_back(order);
+        auto it = std::prev(level.end());
+        order_lookup_[order.id] = OrderLocation{
+            order.side,
+            order.price,
+            it,
+            true
+        };
+    } else {
+        auto& level = stop_sells_[order.price];
+        level.push_back(order);
+        auto it = std::prev(level.end());
+        order_lookup_[order.id] = OrderLocation{
+            order.side,
+            order.price,
+            it,
+            true
+        };
+    }
+
+    return {};
+}
+
+std::vector<Trade> OrderBook::triggerStops(Price trade_price)
+{
+    last_trade_price_ = trade_price;
+    std::vector<Trade> all;
+
+    bool progressed = true;
+    while (progressed) {
+        progressed = false;
+        Price last = *last_trade_price_;
+
+        // Buy stops: ascending map — fire while trigger <= last.
+        while (!stop_buys_.empty() && stop_buys_.begin()->first <= last) {
+            auto level_it = stop_buys_.begin();
+            auto& level = level_it->second;
+            Order stop = level.front();
+            level.pop_front();
+            order_lookup_.erase(stop.id);
+            if (level.empty()) {
+                stop_buys_.erase(level_it);
+            }
+
+            stop.type = OrderType::Market;
+            stop.price = 0;
+            stop.tif = TimeInForce::IOC;
+            stop.remaining_quantity = stop.quantity;
+
+            auto trades = matchBuyOrder(stop);
+            if (!trades.empty()) {
+                last = trades.back().price;
+                last_trade_price_ = last;
+                all.insert(all.end(), trades.begin(), trades.end());
+            }
+            progressed = true;
+        }
+
+        // Sell stops: descending map — fire while trigger >= last.
+        while (!stop_sells_.empty() && stop_sells_.begin()->first >= last) {
+            auto level_it = stop_sells_.begin();
+            auto& level = level_it->second;
+            Order stop = level.front();
+            level.pop_front();
+            order_lookup_.erase(stop.id);
+            if (level.empty()) {
+                stop_sells_.erase(level_it);
+            }
+
+            stop.type = OrderType::Market;
+            stop.price = 0;
+            stop.tif = TimeInForce::IOC;
+            stop.remaining_quantity = stop.quantity;
+
+            auto trades = matchSellOrder(stop);
+            if (!trades.empty()) {
+                last = trades.back().price;
+                last_trade_price_ = last;
+                all.insert(all.end(), trades.begin(), trades.end());
+            }
+            progressed = true;
+        }
+    }
+
+    return all;
+}
+
 void OrderBook::addRestingOrder(const Order& order)
 {
     if (order.side == Side::Buy) {
@@ -415,7 +583,8 @@ void OrderBook::addRestingOrder(const Order& order)
         order_lookup_[order.id] = OrderLocation{
             order.side,
             order.price,
-            it
+            it,
+            false
         };
     } else {
         auto& orders_at_level = asks_[order.price];
@@ -426,7 +595,8 @@ void OrderBook::addRestingOrder(const Order& order)
         order_lookup_[order.id] = OrderLocation{
             order.side,
             order.price,
-            it
+            it,
+            false
         };
     }
 }

@@ -49,9 +49,12 @@ public:
             mid = *mp;
         }
 
+        const double sigma =
+            book.realized_vol > 0.0 ? book.realized_vol : params_.sigma;
+
         const double q = static_cast<double>(portfolio.inventory);
         const double variance_term =
-            params_.gamma * params_.sigma * params_.sigma * params_.T;
+            params_.gamma * sigma * sigma * params_.T;
 
         const double reservation = mid - q * variance_term;
 
@@ -59,10 +62,10 @@ public:
             0.5 * variance_term +
             (1.0 / params_.gamma) * std::log(1.0 + params_.gamma / params_.k);
 
-        // Widen when toxicity proxy is elevated.
-        if (const auto tox = signals::toxicityProxy(book.book)) {
-            half_spread *= (1.0 + 0.5 * std::abs(*tox));
-        }
+        // Widen when blended book + trade-flow toxicity is elevated.
+        const double tox =
+            signals::blendedToxicity(book.book, book.trade_toxicity);
+        half_spread *= (1.0 + 0.5 * std::abs(tox));
 
         half_spread = std::max(
             half_spread,

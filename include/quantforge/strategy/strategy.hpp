@@ -13,6 +13,10 @@ struct BookView {
     signals::BookSnapshot book{};
     engine::Price fair_price{0};
     engine::Timestamp now{0};
+    /// EWMA mid-return volatility (price units); 0 if not yet estimated.
+    double realized_vol{0.0};
+    /// EWMA signed aggressor flow (buy +qty / sell -qty), used for toxicity.
+    double trade_toxicity{0.0};
 };
 
 struct PortfolioView {

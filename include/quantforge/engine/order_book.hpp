@@ -23,6 +23,9 @@ public:
     std::vector<Trade> addOrder(const Order& order);
     bool cancelOrder(OrderId order_id);
 
+    /// Last trade price used to arm stop triggers (0 if none yet).
+    std::optional<Price> lastTradePrice() const;
+
     std::optional<Price> bestBid() const;
     std::optional<Price> bestAsk() const;
 
@@ -42,19 +45,26 @@ private:
 
     std::map<Price, OrderList, std::greater<Price>> bids_;
     std::map<Price, OrderList> asks_;
+    /// Stop books keyed by trigger price.
+    std::map<Price, OrderList> stop_buys_;   // trigger ascending
+    std::map<Price, OrderList, std::greater<Price>> stop_sells_;
 
     struct OrderLocation {
         Side side;
         Price price;
         OrderList::iterator iterator;
+        bool is_stop{false};
     };
 
     std::unordered_map<OrderId, OrderLocation> order_lookup_;
+    std::optional<Price> last_trade_price_{};
 
     void validateOrder(const Order& order) const;
 
     std::vector<Trade> matchBuyOrder(Order incoming);
     std::vector<Trade> matchSellOrder(Order incoming);
+    std::vector<Trade> restStopOrder(Order order);
+    std::vector<Trade> triggerStops(Price trade_price);
 
     void addRestingOrder(const Order& order);
 

@@ -5,11 +5,9 @@ Use this pack for placement demos / README media.
 ## Artefacts to generate
 
 ```bash
-# C++ comparison + walk-forward JSON
-./build/quantforge --config configs/walk_forward.json --out-dir build/reports --json-out build/reports/walk_forward.json
-
-# Animated LOB frames
-./build/lob_replay_export --strategy avellaneda_stoikov --out web/replay/sample_replay.json
+# One-shot: comparison + WF + all stress JSONs + LOB replay + BENCHMARK.md
+bash scripts/generate_evidence.sh          # Linux/macOS/CI
+# or:  pwsh scripts/generate_evidence.ps1  # Windows
 
 # Research UI (Portfolio-Analyser-style)
 cd python
@@ -27,8 +25,9 @@ uvicorn quantforge_research.app:app --reload --port 8000
 4. **Leakage foil** — point at LOB vs naive-bar MTM divergence (`test_leakage` / CI badge).
 5. **Walk-forward** — enable checkbox / `walk_forward.json`; stress that OOS mean matters; IS-only param search freezes winner.
 6. **Cancel race** — `configs/stress_cancel_race.json` (`cancel_latency` > 0) vs immediate cancel; stale quotes can still fill.
-7. **Risk kill / vol stress** — `stress_mm.json` / `stress_vol_spike.json`; show `risk_killed` + VaR columns.
-8. **CI** — green badge / local `ctest` 50+ tests.
+7. **Stale / toxic regimes** — `stress_stale_quotes.json` / `stress_toxic_flow.json`; AS widens on blended toxicity + realized vol.
+8. **Risk kill / vol stress** — `stress_mm.json` / `stress_vol_spike.json`; show `risk_killed` + VaR columns.
+9. **CI** — green badge / local `ctest` 60+ tests; Docker optional for UI demo.
 
 ## Failure we caught
 

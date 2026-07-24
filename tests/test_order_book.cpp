@@ -542,4 +542,90 @@ TEST(OrderBookTest, TradesIncludeFees)
     EXPECT_LT(trades[0].maker_fee, 0.0);  // rebate
 }
 
+Order makeStopOrder(
+    quantforge::engine::OrderId id,
+    Side side,
+    quantforge::engine::Price trigger,
+    quantforge::engine::Quantity quantity,
+    quantforge::engine::Timestamp timestamp
+)
+{
+    return Order{
+        id,
+        side,
+        OrderType::Stop,
+        trigger,
+        quantity,
+        timestamp
+    };
+}
+
+TEST(OrderBookTest, StopBuyTriggersWhenLastTradeCrossesUp)
+{
+    OrderBook book;
+
+    book.addOrder(makeLimitOrder(1, Side::Sell, 10100, 50, 1));
+    book.addOrder(makeLimitOrder(2, Side::Buy, 10000, 50, 2));
+    // Establish last trade at 10000 via a small aggressive sell into bid.
+    book.addOrder(makeLimitOrder(3, Side::Sell, 10000, 10, 3));
+    ASSERT_TRUE(book.lastTradePrice().has_value());
+    EXPECT_EQ(*book.lastTradePrice(), 10000);
+
+    // Rest buy stop above last; should not fire yet.
+    const auto rest = book.addOrder(makeStopOrder(4, Side::Buy, 10100, 20, 4));
+    EXPECT_TRUE(rest.empty());
+    EXPECT_TRUE(book.queuePosition(4).has_value());
+
+    // Trade through ask at 10100 → arms buy stop → market buy consumes ask.
+    book.addOrder(makeLimitOrder(5, Side::Sell, 10100, 40, 5));
+    const auto trades =
+        book.addOrder(makeLimitOrder(6, Side::Buy, 10100, 10, 6));
+
+    ASSERT_FALSE(trades.empty());
+    EXPECT_FALSE(book.queuePosition(4).has_value());
+    // Triggered stop should appear among trades as buy aggressor id 4.
+    bool stop_filled = false;
+    for (const auto& t : trades) {
+        if (t.buy_order_id == 4) {
+            stop_filled = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(stop_filled);
+}
+
+TEST(OrderBookTest, StopSellTriggersWhenLastTradeCrossesDown)
+{
+    OrderBook book;
+
+    book.addOrder(makeLimitOrder(1, Side::Buy, 9900, 80, 1));
+    book.addOrder(makeLimitOrder(2, Side::Sell, 10100, 50, 2));
+
+    book.addOrder(makeStopOrder(3, Side::Sell, 9950, 25, 3));
+    EXPECT_TRUE(book.queuePosition(3).has_value());
+
+    // Aggressive sell hits bid at 9900 → last <= 9950 → sell stop fires.
+    const auto trades =
+        book.addOrder(makeMarketOrder(4, Side::Sell, 10, 4));
+
+    ASSERT_FALSE(trades.empty());
+    EXPECT_FALSE(book.queuePosition(3).has_value());
+    bool stop_filled = false;
+    for (const auto& t : trades) {
+        if (t.sell_order_id == 3) {
+            stop_filled = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(stop_filled);
+}
+
+TEST(OrderBookTest, StopOrderCanBeCancelled)
+{
+    OrderBook book;
+    book.addOrder(makeStopOrder(1, Side::Buy, 10500, 10, 1));
+    EXPECT_TRUE(book.cancelOrder(1));
+    EXPECT_FALSE(book.queuePosition(1).has_value());
+}
+
 } // namespace

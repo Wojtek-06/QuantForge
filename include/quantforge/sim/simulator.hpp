@@ -87,6 +87,9 @@ private:
     engine::OrderId next_order_id_{1};
     engine::Timestamp now_{0};
     engine::Price fair_price_{10'000};
+    engine::Price last_mid_for_vol_{0};
+    double realized_vol_{0.0};
+    double trade_toxicity_{0.0};
     bool risk_killed_{false};
     std::string risk_reason_;
     std::uint64_t strategy_tick_count_{0};
@@ -117,6 +120,8 @@ private:
         const std::vector<engine::Trade>& trades,
         engine::ParticipantId aggressor
     );
+    void observeTradesForSignals(const std::vector<engine::Trade>& trades);
+    void observeMidForVol(engine::Price mid);
 };
 
 } // namespace quantforge::sim

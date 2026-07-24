@@ -1,0 +1,14 @@
+services:
+  quantforge-ui:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      QUANTFORGE_BIN: /app/bin/quantforge
+      PYTHONPATH: /app/python
+    volumes:
+      - ./build/reports:/app/build/reports
+    command: >
+      bash -c "quantforge --config configs/default_experiment.json --out-dir build/reports --json-out build/reports/out.json
+      && lob_replay_export --strategy avellaneda_stoikov --horizon 800 --out web/replay/sample_replay.json
+      && uvicorn quantforge_research.app:app --host 0.0.0.0 --port 8000"

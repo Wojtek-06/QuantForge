@@ -16,11 +16,11 @@ QuantForge absorbs and extends [cpp-exchange-engine](https://github.com/Wojtek-0
 
 | Layer | Capability |
 |-------|------------|
-| **Venue** | C++20 LOB: market/limit/cancel, partial fills, **IOC/FOK**, maker/taker fees, **queue position** |
+| **Venue** | C++20 LOB: market/limit/**stop**/cancel, partial fills, **IOC/FOK**, maker/taker fees, **queue position** |
 | **Market data** | CSV ingest + `AsOf` look-ahead guards |
-| **Simulator** | Priority event queue, synthetic/CSV flow, latency, LOB replay frames |
+| **Simulator** | Priority event queue, synthetic/CSV flow, latency, cancel races, LOB replay frames |
 | **Strategies** | `no_trade` · symmetric MM · Avellaneda–Stoikov (tunable params) |
-| **Signals** | Spread, microprice, OFI, toxicity proxy |
+| **Signals** | Spread, microprice, OFI, blended toxicity, EWMA realized vol |
 | **Accounting** | MTM, drawdown, fill rate, spread capture, adverse selection, equity path |
 | **Risk** | Kill switch + overnight historical **VaR/ES**; Python overnight/stress via Cross-Asset-Risk-Engine (BS fallback) |
 | **Walk-forward** | Rolling IS → OOS folds; optional **IS-only grid/random param search**, freeze winner for OOS |
@@ -142,9 +142,15 @@ Or set `QUANTFORGE_RISK_ENGINE_ROOT` to that checkout. `/api/risk/stress` then u
 |------|--------|
 | `configs/default_experiment.json` | Baseline seeded comparison |
 | `configs/stress_mm.json` | Wider fees / risk gate |
+| `configs/stress_cancel_race.json` | `cancel_latency` > 0 fill race |
+| `configs/stress_vol_spike.json` | Jump / vol + overnight VaR |
+| `configs/stress_stale_quotes.json` | Slow cancel + inventory stress |
+| `configs/stress_toxic_flow.json` | Aggressive flow / adverse selection |
 | `configs/csv_replay.json` | Replay `data/synthetic_flow.csv` |
 | `configs/walk_forward.json` | IS/OOS folds + overnight VaR |
 | `configs/walk_forward_search.json` | Walk-forward **with IS-only param search** |
+
+Evidence one-shot (after build): `scripts/generate_evidence.sh` / `.ps1` → `build/reports/` + replay JSON. Docker: `docker compose up --build`.
 
 ### IS-only search keys
 

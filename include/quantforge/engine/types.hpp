@@ -17,7 +17,10 @@ enum class Side {
 
 enum class OrderType {
     Limit,
-    Market
+    Market,
+    /// Resting stop: `price` is the trigger. Becomes a market order when last trade crosses.
+    /// Buy stop triggers when last >= trigger; sell stop when last <= trigger.
+    Stop
 };
 
 /// Time-in-force semantics for limit orders.

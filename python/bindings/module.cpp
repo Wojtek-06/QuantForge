@@ -323,7 +323,8 @@ PYBIND11_MODULE(_quantforge, m)
 
     py::enum_<quantforge::engine::OrderType>(m, "OrderType")
         .value("Limit", quantforge::engine::OrderType::Limit)
-        .value("Market", quantforge::engine::OrderType::Market);
+        .value("Market", quantforge::engine::OrderType::Market)
+        .value("Stop", quantforge::engine::OrderType::Stop);
 
     py::enum_<quantforge::engine::TimeInForce>(m, "TimeInForce")
         .value("GTC", quantforge::engine::TimeInForce::GTC)
