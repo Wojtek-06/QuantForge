@@ -98,10 +98,24 @@ std::string formatWalkForwardJson(const experiment::WalkForwardReport& report)
             << "\"oos_var_95\":"
             << (f.oos_var_es.valid ? f.oos_var_es.var : 0.0) << ','
             << "\"oos_risk_killed\":"
-            << (f.oos_result.simulation.risk_killed ? "true" : "false")
+            << (f.oos_result.simulation.risk_killed ? "true" : "false") << ','
+            << "\"is_selection_score\":" << f.is_selection_score << ','
+            << "\"is_trials\":" << f.is_trials << ','
+            << "\"selected_params\":{"
+            << "\"half_spread\":" << f.selected_params.half_spread << ','
+            << "\"quote_size\":" << f.selected_params.quote_size << ','
+            << "\"gamma\":" << f.selected_params.gamma << ','
+            << "\"sigma\":" << f.selected_params.sigma << ','
+            << "\"T\":" << f.selected_params.T << ','
+            << "\"k\":" << f.selected_params.k
+            << "}"
             << '}';
     }
-    out << "]}";
+    out << "],"
+        << "\"param_search_enabled\":"
+        << (report.param_search_enabled ? "true" : "false") << ','
+        << "\"search_method\":\"" << report.search_method << "\""
+        << '}';
     return out.str();
 }
 

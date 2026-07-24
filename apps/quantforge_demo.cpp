@@ -148,6 +148,12 @@ int main(int argc, char** argv)
         wf.step = config.wf_step;
         wf.max_folds = config.wf_max_folds;
         wf.strategy = config.wf_strategy;
+        wf.fixed_params = config.default_params;
+        wf.param_search.enabled = config.wf_param_search;
+        wf.param_search.method = config.wf_search_method;
+        wf.param_search.max_trials = config.wf_search_max_trials;
+        wf.param_search.seed = config.wf_search_seed;
+        wf.param_search.space = config.wf_search_space;
         wf_report = experiment::runWalkForward(config, wf);
         std::cout << '\n' << experiment::formatWalkForwardReport(wf_report);
     }

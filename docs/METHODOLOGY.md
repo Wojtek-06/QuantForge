@@ -29,8 +29,18 @@ Inventory that drifts one way turns “earned” spread into mark-to-market pain
 
 ## Walk-forward / OOS
 
-`runWalkForward` rolls IS → OOS folds with fresh seeds (regime proxies). Tune only on IS narratives; report **mean OOS MTM**, fills, and VaR. Do not cherry-pick a single lucky fold.
+`runWalkForward` rolls IS → OOS folds with fresh seeds (regime proxies). Report **mean OOS MTM**, fills, and VaR. Do not cherry-pick a single lucky fold.
+
+### IS-only parameter search
+
+When `wf_param_search` is enabled, each fold:
+
+1. Enumerates a grid (or random sample) of strategy params on the **IS** window only.
+2. Freezes the IS winner (`half_spread` / `quote_size` for symmetric MM; `gamma` / `sigma` / `T` for Avellaneda–Stoikov).
+3. Evaluates the **OOS** window with those frozen params.
+
+OOS never enters the selection objective. Tests in `tests/test_param_search.cpp` assert trial scores match IS simulations and that walk-forward freezes the IS winner.
 
 ## Overnight risk
 
-Historical VaR/ES on the equity path approximates an overnight stress snapshot. Optional Cross-Asset-Risk-Engine MC values an option book for portfolio-level stress in the research API — complementary to the sim kill switch, not a replacement for pathwise LOB realism.
+Historical VaR/ES on the equity path approximates an overnight stress snapshot inside the C++ kill switch. The Python `risk_bridge` adds an overnight **scenario grid** (spot/vol shocks) using Cross-Asset-Risk-Engine MC/Greeks when `_core_risk_engine` is installed, otherwise a Black–Scholes fallback — complementary to the sim kill switch, not a replacement for pathwise LOB realism.

@@ -1,7 +1,9 @@
 #include "quantforge/experiment/walk_forward.hpp"
 
+#include "quantforge/experiment/param_search.hpp"
 #include "quantforge/risk/var_es.hpp"
 
+#include <algorithm>
 #include <iomanip>
 #include <sstream>
 
@@ -15,6 +17,8 @@ WalkForwardReport runWalkForward(
     WalkForwardReport report;
     report.experiment_name = base.name + "_walk_forward";
     report.strategy = wf.strategy;
+    report.param_search_enabled = wf.param_search.enabled;
+    report.search_method = wf.param_search.method;
 
     if (wf.is_horizon == 0 || wf.oos_horizon == 0 || wf.step == 0 ||
         wf.max_folds == 0) {
@@ -28,7 +32,8 @@ WalkForwardReport runWalkForward(
         WalkForwardFold row;
         row.fold_index = fold;
         row.is_seed = base.sim.seed + static_cast<std::uint64_t>(fold) * 2ULL;
-        row.oos_seed = row.is_seed + 1ULL;
+        row.oos_seed = row.is_seed + 1ULL +
+            static_cast<std::uint64_t>(fold) * static_cast<std::uint64_t>(wf.step);
 
         ExperimentConfig is_cfg = base;
         is_cfg.name = base.name + "_is_" + std::to_string(fold);
@@ -40,21 +45,36 @@ WalkForwardReport runWalkForward(
         oos_cfg.name = base.name + "_oos_" + std::to_string(fold);
         oos_cfg.sim.seed = row.oos_seed;
         oos_cfg.sim.horizon = static_cast<engine::Timestamp>(wf.oos_horizon);
-        // Emulate regime shift into the OOS window.
-        oos_cfg.sim.seed = row.oos_seed + static_cast<std::uint64_t>(fold) *
-            static_cast<std::uint64_t>(wf.step);
         oos_cfg.strategies = {wf.strategy};
 
-        const auto is_report = runComparison(is_cfg);
-        const auto oos_report = runComparison(oos_cfg);
+        strategy::StrategyParams selected = wf.fixed_params;
+        std::vector<strategy::ParamTrial> trials;
 
-        if (!is_report.results.empty()) {
-            row.is_result = is_report.results.front();
+        if (wf.param_search.enabled) {
+            // Selection uses the IS fold only — OOS config is never passed here.
+            selected = searchBestParamsIsOnly(
+                is_cfg,
+                wf.strategy,
+                wf.param_search,
+                &trials
+            );
+            row.is_trials = trials.size();
+            if (!trials.empty()) {
+                auto best_it = std::max_element(
+                    trials.begin(),
+                    trials.end(),
+                    [](const strategy::ParamTrial& a, const strategy::ParamTrial& b) {
+                        return a.is_score < b.is_score;
+                    }
+                );
+                row.is_selection_score = best_it->is_score;
+            }
         }
-        if (!oos_report.results.empty()) {
-            row.oos_result = oos_report.results.front();
-            row.oos_var_es = row.oos_result.simulation.overnight_var_es;
-        }
+
+        row.selected_params = selected;
+        row.is_result = runWithParams(is_cfg, wf.strategy, selected);
+        row.oos_result = runWithParams(oos_cfg, wf.strategy, selected);
+        row.oos_var_es = row.oos_result.simulation.overnight_var_es;
 
         is_sum += row.is_result.simulation.metrics.mtm_pnl;
         oos_sum += row.oos_result.simulation.metrics.mtm_pnl;
@@ -73,7 +93,12 @@ std::string formatWalkForwardReport(const WalkForwardReport& report)
     std::ostringstream out;
     out << "=== Walk-forward / OOS: " << report.experiment_name << " ===\n";
     out << "Strategy: " << report.strategy << "\n";
-    out << "Folds: " << report.folds.size() << "\n\n";
+    out << "Folds: " << report.folds.size() << "\n";
+    if (report.param_search_enabled) {
+        out << "IS param search: " << report.search_method
+            << " (frozen for OOS)\n";
+    }
+    out << '\n';
 
     out << std::left
         << std::setw(8) << "Fold"
@@ -83,8 +108,9 @@ std::string formatWalkForwardReport(const WalkForwardReport& report)
         << std::setw(12) << "OOS_fills"
         << std::setw(12) << "OOS_VaR95"
         << std::setw(10) << "killed"
+        << std::setw(10) << "hs/g"
         << '\n';
-    out << std::string(70, '-') << '\n';
+    out << std::string(92, '-') << '\n';
     out << std::fixed << std::setprecision(2);
 
     for (const auto& fold : report.folds) {
@@ -96,16 +122,20 @@ std::string formatWalkForwardReport(const WalkForwardReport& report)
             << std::setw(12)
             << (fold.oos_var_es.valid ? fold.oos_var_es.var : 0.0)
             << std::setw(10)
-            << (fold.oos_result.simulation.risk_killed ? "yes" : "no")
-            << '\n';
+            << (fold.oos_result.simulation.risk_killed ? "yes" : "no");
+        if (report.strategy == "symmetric_mm") {
+            out << std::setw(10) << fold.selected_params.half_spread;
+        } else {
+            out << std::setw(10) << fold.selected_params.gamma;
+        }
+        out << '\n';
     }
 
     out << '\n'
         << "Mean IS MTM:  " << report.is_mtm_mean << '\n'
         << "Mean OOS MTM: " << report.oos_mtm_mean << '\n'
         << "Sum OOS MTM:  " << report.oos_mtm_sum << '\n'
-        << "Note: each fold uses a fresh seeded regime (IS then OOS). "
-           "Do not tune on OOS.\n";
+        << "Note: parameter selection uses IS folds only; OOS is evaluation.\n";
 
     return out.str();
 }

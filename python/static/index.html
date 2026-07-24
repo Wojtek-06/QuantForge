@@ -11,34 +11,42 @@
 </head>
 <body>
   <header>
-    <h1>QuantForge</h1>
-    <p>Research façade for the event-driven LOB market-making lab — strategy comparison, walk-forward OOS, leakage foil, and Risk Engine stress hooks.</p>
+    <div class="brand-row">
+      <h1>QuantForge</h1>
+      <span id="healthBadge" class="badge">…</span>
+    </div>
+    <p>Event-driven LOB market-making lab — comparison, walk-forward with IS-only search, leakage foil, and overnight risk stress.</p>
   </header>
+
   <main>
-    <aside class="panel">
+    <aside class="panel controls">
       <label for="config">Experiment config</label>
       <select id="config"></select>
-      <label class="checks"><input type="checkbox" id="wf" /> Run walk-forward / OOS</label>
-      <button id="runBtn">Run comparison</button>
+      <label class="checks"><input type="checkbox" id="wf" /> Walk-forward / OOS</label>
+      <button id="runBtn">Run experiment</button>
       <p id="status" class="status muted"></p>
 
-      <hr style="border-color: var(--line); margin: 1rem 0;" />
-      <h3 style="margin: 0 0 0.6rem; font-size: 1rem;">Overnight option stress</h3>
-      <p class="muted">Uses Cross-Asset-Risk-Engine when installed; otherwise BS fallback.</p>
+      <h3>History</h3>
+      <div id="historyList" class="history-list muted">No runs yet.</div>
+
+      <h3>Overnight option stress</h3>
+      <p class="muted tight">Risk Engine MC when installed; BS + scenario grid otherwise.</p>
       <label for="spot">Spot</label>
       <input id="spot" type="number" value="100" />
       <label for="strike">Strike</label>
       <input id="strike" type="number" value="100" />
       <label for="vol">Vol</label>
       <input id="vol" type="number" step="0.01" value="0.25" />
-      <button id="stressBtn" class="secondary">Stress</button>
-      <pre id="stressOut" class="mono muted" style="white-space: pre-wrap; font-size: 0.75rem;"></pre>
-      <p class="muted"><a href="/replay/" style="color: var(--accent);">Open LOB replay viewer</a></p>
+      <button id="stressBtn" class="secondary">Run stress grid</button>
+      <p class="muted"><a href="/replay/">Open LOB replay viewer</a></p>
     </aside>
 
-    <section>
-      <div class="panel" style="margin-bottom: 1rem;">
-        <h2 style="margin-top: 0; font-size: 1.1rem;">Strategy comparison</h2>
+    <section class="workspace">
+      <div class="panel">
+        <div class="section-head">
+          <h2>Strategy comparison</h2>
+          <span id="backendTag" class="tag muted"></span>
+        </div>
         <table>
           <thead>
             <tr>
@@ -56,17 +64,41 @@
             <tr><td colspan="8" class="muted">Run an experiment to populate.</td></tr>
           </tbody>
         </table>
-        <p id="leakage" class="muted"></p>
       </div>
 
       <div class="grid-2">
         <div class="panel">
-          <h2 style="margin-top: 0; font-size: 1.1rem;">Equity curves</h2>
+          <h2>Equity</h2>
           <canvas id="equityChart" class="chart"></canvas>
+          <div id="equityLegend" class="legend"></div>
         </div>
         <div class="panel">
-          <h2 style="margin-top: 0; font-size: 1.1rem;">Walk-forward folds</h2>
+          <h2>Drawdown</h2>
+          <canvas id="ddChart" class="chart"></canvas>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="panel">
+          <h2>Walk-forward</h2>
           <div id="wfPanel"><p class="muted">Walk-forward not requested.</p></div>
+          <canvas id="wfChart" class="chart chart-sm"></canvas>
+        </div>
+        <div class="panel">
+          <h2>Leakage foil</h2>
+          <div id="leakPanel"><p class="muted">No leakage case in this payload.</p></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="section-head">
+          <h2>Risk stress</h2>
+          <span id="riskSource" class="tag muted"></span>
+        </div>
+        <div id="stressSummary" class="muted">Run the overnight stress grid from the sidebar.</div>
+        <div class="grid-2" style="margin-top: 0.8rem;">
+          <pre id="stressOut" class="mono stress-pre"></pre>
+          <canvas id="stressChart" class="chart"></canvas>
         </div>
       </div>
     </section>

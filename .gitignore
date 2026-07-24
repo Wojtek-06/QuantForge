@@ -25,3 +25,13 @@ venv/
 python/.venv/
 *.egg-info/
 .mypy_cache/
+*.pyd
+*.so
+python/quantforge/*.dll
+python/quantforge/_quantforge*.lib
+python/quantforge/_quantforge*.exp
+build/research_history.sqlite3
+build_cfg.txt
+build_log.txt
+ctest_log.txt
+pytest_log.txt

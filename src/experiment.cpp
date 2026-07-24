@@ -12,14 +12,34 @@ namespace quantforge::experiment {
 
 std::unique_ptr<strategy::IStrategy> makeStrategy(const std::string& name)
 {
+    return makeStrategy(name, strategy::StrategyParams{});
+}
+
+std::unique_ptr<strategy::IStrategy> makeStrategy(
+    const std::string& name,
+    const strategy::StrategyParams& params
+)
+{
     if (name == "no_trade") {
         return std::make_unique<strategy::NoTradeStrategy>();
     }
     if (name == "symmetric_mm") {
-        return std::make_unique<strategy::SymmetricMarketMaker>();
+        strategy::SymmetricMarketMaker::Params p;
+        p.half_spread = params.half_spread;
+        p.quote_size = params.quote_size;
+        p.max_inventory = params.max_inventory;
+        return std::make_unique<strategy::SymmetricMarketMaker>(p);
     }
     if (name == "avellaneda_stoikov") {
-        return std::make_unique<strategy::AvellanedaStoikovMM>();
+        strategy::AvellanedaStoikovMM::Params p;
+        p.gamma = params.gamma;
+        p.sigma = params.sigma;
+        p.T = params.T;
+        p.k = params.k;
+        p.quote_size = params.quote_size;
+        p.max_inventory = params.max_inventory;
+        p.min_half_spread = params.min_half_spread;
+        return std::make_unique<strategy::AvellanedaStoikovMM>(p);
     }
 
     throw std::invalid_argument("Unknown strategy: " + name);
@@ -27,15 +47,24 @@ std::unique_ptr<strategy::IStrategy> makeStrategy(const std::string& name)
 
 ExperimentReport runComparison(const ExperimentConfig& config)
 {
+    return runComparison(config, config.default_params);
+}
+
+ExperimentReport runComparison(
+    const ExperimentConfig& config,
+    const strategy::StrategyParams& params
+)
+{
     ExperimentReport report;
     report.experiment_name = config.name;
 
     for (const auto& strategy_name : config.strategies) {
         sim::Simulator simulator(config.sim);
-        simulator.setStrategy(makeStrategy(strategy_name));
+        simulator.setStrategy(makeStrategy(strategy_name, params));
 
         StrategyResult row;
         row.strategy_name = strategy_name;
+        row.params = params;
         row.simulation = simulator.run();
         report.results.push_back(std::move(row));
     }
