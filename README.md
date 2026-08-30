@@ -168,6 +168,7 @@ Selection scores candidates on each **IS** fold only, freezes the winner, then e
 | Cross-Asset-Risk-Engine | Kill-switch concepts + optional pybind stress |
 | Portfolio-Analyser | Report / UI interaction patterns |
 
-Private research portfolio project. LOB core ported from Wojtek-06/cpp-exchange-engine and extended for MM research.
+Portfolio / placement project (not a live trading system). LOB core ported from
+[cpp-exchange-engine](https://github.com/Wojtek-06/cpp-exchange-engine) and extended for MM research.
 
-**Repo:** https://github.com/Wojtek-06/QuantForge
+**License:** MIT · **Repo:** https://github.com/Wojtek-06/QuantForge
